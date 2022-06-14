@@ -76,12 +76,12 @@ internal class HubLifetimeManagerGrain<T> : Grain<HashSet<IHubLifetimeManagerGra
     public Task SubscribeAsync(IHubLifetimeManagerGrainObserver observer)
     {
         State.Add(observer);
-        return Task.CompletedTask;
+        return WriteStateAsync();
     }
 
     public Task UnsubscribeAsync(IHubLifetimeManagerGrainObserver observer)
     {
         State.Remove(observer);
-        return Task.CompletedTask;
+        return WriteStateAsync();
     }
 }
