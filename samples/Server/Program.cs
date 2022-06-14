@@ -4,7 +4,7 @@ using Server.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseOrleans(builder => builder.UseLocalhostClustering());
+builder.Host.UseOrleans(builder => builder.UseLocalhostClustering().AddMemoryGrainStorageAsDefault());
 
 builder.Services.AddSignalR().AddOrleans();
 
