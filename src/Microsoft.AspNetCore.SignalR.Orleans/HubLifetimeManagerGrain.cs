@@ -3,85 +3,138 @@ using Orleans.Runtime;
 
 namespace Microsoft.AspNetCore.SignalR;
 
-internal class HubLifetimeManagerGrain<T> : Grain<HashSet<IHubLifetimeManagerGrainObserver>>, IHubLifetimeManagerGrain<T>
+internal class HubLifetimeManagerGrain<T> : Grain<SubscriptionState>, IHubLifetimeManagerGrain<T>
 {
-    public async Task AddToGroupAsync(string connectionId, string groupName)
+    public Task AddToGroupAsync(string connectionId, string groupName)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            await s.AddToGroupAsync(connectionId, groupName);
-        }
+            var (connectionId, groupName) = state;
+
+            return s.AddToGroupAsync(connectionId, groupName);
+
+        }, (connectionId, groupName));
     }
 
-    public async Task RemoveFromGroupAsync(string connectionId, string groupName)
+    public Task RemoveFromGroupAsync(string connectionId, string groupName)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            if (!await s.RemoveFromGroupAsync(connectionId, groupName))
-            {
-                // If this is the last connection in the group then unsubscribe
-                State.Remove(s);
-            }
-        }
+            var (connectionId, groupName) = state;
+
+            return s.RemoveFromGroupAsync(connectionId, groupName);
+
+        }, (connectionId, groupName));
     }
 
-    public async Task SendAllAsync(string methodName, object?[] args)
+    public Task SendAllAsync(string methodName, object?[] args)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            await s.SendAllAsync(methodName, args);
-        }
+            var (methodName, args) = state;
+
+            return s.SendAllAsync(methodName, args);
+
+        }, (methodName, args));
     }
 
-    public async Task SendAllExceptAsync(string methodName, object?[] args, IReadOnlyList<string> excludedConnectionIds)
+    public Task SendAllExceptAsync(string methodName, object?[] args, IReadOnlyList<string> excludedConnectionIds)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            await s.SendAllExceptAsync(methodName, args, excludedConnectionIds);
-        }
+            var (methodName, args, excludedConnectionIds) = state;
+
+            return s.SendAllExceptAsync(methodName, args, excludedConnectionIds);
+
+        }, (methodName, args, excludedConnectionIds));
     }
 
-    public async Task SendConnectionAsync(string connectionId, string methodName, object?[] args)
+    public Task SendConnectionAsync(string connectionId, string methodName, object?[] args)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            await s.SendConnectionAsync(connectionId, methodName, args);
-        }
+            var (connectionId, methodName, args) = state;
+
+            return s.SendConnectionAsync(connectionId, methodName, args);
+
+        }, (connectionId, methodName, args));
     }
 
-    public async Task SendGroupAsync(string groupName, string methodName, object?[] args)
+    public Task SendGroupAsync(string groupName, string methodName, object?[] args)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            await s.SendGroupAsync(groupName, methodName, args);
-        }
+            var (groupName, methodName, args) = state;
+
+            return s.SendGroupAsync(groupName, methodName, args);
+
+        }, (groupName, methodName, args));
     }
 
-    public async Task SendGroupExceptAsync(string groupName, string methodName, object?[] args, IReadOnlyList<string> excludedConnectionIds)
+    public Task SendGroupExceptAsync(string groupName, string methodName, object?[] args, IReadOnlyList<string> excludedConnectionIds)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            await s.SendGroupExceptAsync(groupName, methodName, args, excludedConnectionIds);
-        }
+            var (groupName, methodName, args, excludedConnectionIds) = state;
+
+            return s.SendGroupExceptAsync(groupName, methodName, args, excludedConnectionIds);
+
+        }, (groupName, methodName, args, excludedConnectionIds));
     }
 
-    public async Task SendUserAsync(string userId, string methodName, object?[] args)
+    public Task SendUserAsync(string userId, string methodName, object?[] args)
     {
-        foreach (var s in State)
+        return DoAction(static (s, state) =>
         {
-            await s.SendUserAsync(userId, methodName, args);
-        }
+            var (userId, methodName, args) = state;
+
+            return s.SendUserAsync(userId, methodName, args);
+
+        }, (userId, methodName, args));
     }
 
     public Task SubscribeAsync(IHubLifetimeManagerGrainObserver observer)
     {
-        State.Add(observer);
+        State.Subscriptions.Add(observer);
         return WriteStateAsync();
     }
 
     public Task UnsubscribeAsync(IHubLifetimeManagerGrainObserver observer)
     {
-        State.Remove(observer);
+        State.Subscriptions.Remove(observer);
         return WriteStateAsync();
     }
+
+    private async Task DoAction<TState>(Func<IHubLifetimeManagerGrainObserver, TState, Task> callback, TState state)
+    {
+        List<IHubLifetimeManagerGrainObserver>? clientsToRemove = null;
+
+        foreach (var s in State.Subscriptions)
+        {
+            try
+            {
+                await callback(s, state);
+            }
+            catch (ClientNotAvailableException)
+            {
+                clientsToRemove ??= new();
+                clientsToRemove.Add(s);
+            }
+        }
+
+        if (clientsToRemove is not null)
+        {
+            foreach (var s in clientsToRemove)
+            {
+                State.Subscriptions.Remove(s);
+            }
+
+            await WriteStateAsync();
+        }
+    }
+}
+
+internal class SubscriptionState
+{
+    public HashSet<IHubLifetimeManagerGrainObserver> Subscriptions { get; } = new();
 }
