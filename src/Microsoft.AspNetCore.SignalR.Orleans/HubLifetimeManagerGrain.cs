@@ -115,7 +115,7 @@ internal class HubLifetimeManagerGrain<T> : Grain<SubscriptionState>, IHubLifeti
             {
                 await callback(s, state);
             }
-            catch (ClientNotAvailableException)
+            catch (Exception ex) when (ex is ClientNotAvailableException or OrleansMessageRejectionException)
             {
                 clientsToRemove ??= new();
                 clientsToRemove.Add(s);
